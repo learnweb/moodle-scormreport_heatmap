@@ -18,3 +18,5 @@ $string['pluginname'] = "Punkteverteilungskarte";
 $string['report_scorm'] = "SCORM Auswertung";
 $string['report'] = "Auswertung";
 $string['report_for'] = "Auswertung für ";
+$string['average'] = "Durchschnitt";
+$string['question'] = "Frage";

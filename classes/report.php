@@ -83,10 +83,15 @@ class report extends \mod_scorm\report {
 
     public function get_data($scormid) {
         global $DB;
+        $attemptbased = false;
         $rawdata = $DB->get_records('scorm_scoes_track', array('scormid' => $scormid), "", 'id, userid, attempt, element, value');
         $refineddata = array();
         foreach ($rawdata as $key => $value) {
-            $attemptid = $value->userid . "-" . $value->attempt;
+            if ($attemptbased) {
+                $attemptid = $value->userid . "-" . $value->attempt;
+            } else {
+                $attemptid = $value->userid;
+            }
             if (!array_key_exists($attemptid, $refineddata)) {
                 $refineddata[$attemptid] = array();
             }
@@ -158,6 +163,20 @@ class report extends \mod_scorm\report {
         }, $catarray);
     }
 
+    private function dehex ($num) {
+        return str_pad((dechex(max(0, min(256, $num)))), 2, '0', STR_PAD_LEFT);
+    }
+
+    public function get_colors($data) {
+        return array_map(function($catarray) {
+            return array_map(function($percent) {
+                $blue = 128 + (242 - 128) * (100 - $percent) / 100;
+                $redgreen = 229 * (100 - $percent) / 100;
+                return '#' . $this->dehex($redgreen) . $this->dehex($redgreen) . $this->dehex($blue);
+            }, $catarray);
+        }, $data);
+    }
+
     /**
      * Displays the full report.
      *
@@ -170,8 +189,10 @@ class report extends \mod_scorm\report {
     public function display($scorm, $cm, $course, $download) {
         global $DB, $OUTPUT, $PAGE;
         $rawdata = $this->get_data($scorm->id);
+        $attemptsize = count($rawdata);
         $parsedata = $this->parse_data_to_percent($rawdata);
         $categorybararray = $this->get_categories($parsedata);
+        $colorarray = $this->get_colors($categorybararray);
         $averagearray = $this->get_average($parsedata);
         $numberarray = array();
         for ($i = 0; $i < count($averagearray); $i++) {
@@ -184,13 +205,16 @@ class report extends \mod_scorm\report {
         $chart->add_series($series1);
         $barseries = array();
         for ($i = 0; $i < 10; $i++) {
-            $barseries[] = new \core\chart_series(($i * 10) . ' - ' . (($i + 1) * 10), $categorybararray[$i]);
+            $barseries[] = new \core\chart_series('', [10, 10, 10]);
+            $barseries[$i]->set_color($colorarray[$i]);
             $chart->add_series($barseries[$i]);
         }
         $chart->set_stacked(true);
         $chart->set_labels(array_map(function ($i) {
             return get_string('question', self::PLUGINNAME) . " " . $i;
         }, $numberarray));
+        $chart->get_yaxis(0, true)->set_max(100);
+        $chart->get_yaxis(0, true)->set_stepsize(10);
         echo $OUTPUT->render($chart);
         $contextmodule = context_module::instance($cm->id);
 

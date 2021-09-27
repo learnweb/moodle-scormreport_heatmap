@@ -18,3 +18,5 @@ $string['pluginname'] = "Heatmap report";
 $string['report_scorm'] = "SCORM Report";
 $string['report'] = "Report";
 $string['report_for'] = "Report for ";
+$string['average'] = "Average";
+$string['question'] = "Question";
