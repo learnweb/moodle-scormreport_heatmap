@@ -211,7 +211,7 @@ class report extends \mod_scorm\report {
         }
         $chart->set_stacked(true);
         $chart->set_labels(array_map(function ($i) {
-            return get_string('question', self::PLUGINNAME) . " " . $i;
+            return get_string('question', self::PLUGINNAME) . " " . ($i + 1);
         }, $numberarray));
         $chart->get_yaxis(0, true)->set_max(100);
         $chart->get_yaxis(0, true)->set_stepsize(10);
