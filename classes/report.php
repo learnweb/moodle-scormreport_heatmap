@@ -65,14 +65,14 @@ class report extends \mod_scorm\report {
         return max($options);
     }
 
-    public function parse_data_to_percent($data) {
+    public static function parse_data_to_percent($data) {
         $parseddata = array();
         foreach ($data as $uid => $attempt) {
             $parseddata[$uid] = array();
             foreach ($attempt as $key => $questiondata) {
                 $type = str_replace('-', '', $questiondata['type']);
                 $callbackname = 'parse_percent_' . $type;
-                if (method_exists($this, $callbackname)) {
+                if (method_exists(self::class, $callbackname)) {
                     $parsed = self::$callbackname($questiondata);
                     $parseddata[$uid][$key] = $parsed;
                 }
@@ -81,7 +81,7 @@ class report extends \mod_scorm\report {
         return $parseddata;
     }
 
-    public function get_data($scormid) {
+    public static function get_data($scormid) {
         global $DB;
         $attemptbased = false;
         $rawdata = $DB->get_records('scorm_scoes_track', array('scormid' => $scormid), "", 'id, userid, attempt, element, value');
@@ -118,7 +118,7 @@ class report extends \mod_scorm\report {
         return $refineddata;
     }
 
-    public function get_average($data) {
+    public static function get_average($data) {
         $count = count($data);
         if ($count == 0) {
             return array (0);
@@ -139,7 +139,7 @@ class report extends \mod_scorm\report {
         }, $sums);
     }
 
-    public function get_categories ($data, $numofcategories = 10) {
+    public static function get_categories ($data, $numofcategories = 10) {
         $barnumber = count($data[array_keys($data)[0]]);
         $divider = 100 / ($numofcategories - 1);
         $catarray = array();
@@ -163,18 +163,51 @@ class report extends \mod_scorm\report {
         }, $catarray);
     }
 
-    private function dehex ($num) {
+    private static function dehex ($num) {
         return str_pad((dechex(max(0, min(256, $num)))), 2, '0', STR_PAD_LEFT);
     }
 
-    public function get_colors($data) {
+    public static function get_colors($data) {
         return array_map(function($catarray) {
             return array_map(function($percent) {
                 $blue = 128 + (242 - 128) * (100 - $percent) / 100;
                 $redgreen = 229 * (100 - $percent) / 100;
-                return '#' . $this->dehex($redgreen) . $this->dehex($redgreen) . $this->dehex($blue);
+                return '#' . self::dehex($redgreen) . self::dehex($redgreen) . self::dehex($blue);
             }, $catarray);
         }, $data);
+    }
+
+    public static function get_chart ($scormid, $numofregions) {
+        $regionwidth = 100 / $numofregions;
+        $rawdata = self::get_data($scormid);
+        $attemptsize = count($rawdata);
+        $parsedata = self::parse_data_to_percent($rawdata);
+        $categorybararray = self::get_categories($parsedata, $numofregions);
+        $colorarray = self::get_colors($categorybararray);
+        $averagearray = self::get_average($parsedata);
+        $numberarray = array();
+        for ($i = 0; $i < count($averagearray); $i++) {
+            array_push($numberarray, $i);
+        }
+
+        $chart = new \core\chart_bar(); // Create a bar chart instance.
+        $series1 = new \core\chart_series(get_string('average', self::PLUGINNAME), $averagearray);
+        $series1->set_type(\core\chart_series::TYPE_LINE);
+        $chart->add_series($series1);
+        $barseries = array();
+        for ($i = 0; $i < $numofregions; $i++) {
+            $barseries[] = new \core\chart_series('', [$regionwidth, $regionwidth, $regionwidth]);
+            $barseries[$i]->set_color($colorarray[$i]);
+            $chart->add_series($barseries[$i]);
+        }
+        $chart->set_stacked(true);
+        $chart->set_labels(array_map(function ($i) {
+            return get_string('question', self::PLUGINNAME) . " " . ($i + 1);
+        }, $numberarray));
+        $chart->get_yaxis(0, true)->set_max(100);
+        $chart->get_yaxis(0, true)->set_stepsize($regionwidth);
+        $chart->set_legend_options(['display' => false]);
+        return $chart;
     }
 
     /**
@@ -188,35 +221,10 @@ class report extends \mod_scorm\report {
      */
     public function display($scorm, $cm, $course, $download) {
         global $DB, $OUTPUT, $PAGE;
-        $rawdata = $this->get_data($scorm->id);
-        $attemptsize = count($rawdata);
-        $parsedata = $this->parse_data_to_percent($rawdata);
-        $categorybararray = $this->get_categories($parsedata);
-        $colorarray = $this->get_colors($categorybararray);
-        $averagearray = $this->get_average($parsedata);
-        $numberarray = array();
-        for ($i = 0; $i < count($averagearray); $i++) {
-            array_push($numberarray, $i);
-        }
-
-        $chart = new \core\chart_bar(); // Create a bar chart instance.
-        $series1 = new \core\chart_series(get_string('average', self::PLUGINNAME), $averagearray);
-        $series1->set_type(\core\chart_series::TYPE_LINE);
-        $chart->add_series($series1);
-        $barseries = array();
-        for ($i = 0; $i < 10; $i++) {
-            $barseries[] = new \core\chart_series('', [10, 10, 10]);
-            $barseries[$i]->set_color($colorarray[$i]);
-            $chart->add_series($barseries[$i]);
-        }
-        $chart->set_stacked(true);
-        $chart->set_labels(array_map(function ($i) {
-            return get_string('question', self::PLUGINNAME) . " " . ($i + 1);
-        }, $numberarray));
-        $chart->get_yaxis(0, true)->set_max(100);
-        $chart->get_yaxis(0, true)->set_stepsize(10);
+        $sectioncount = optional_param('sectioncount', 10, PARAM_INT);
+        $chart = self::get_chart($scorm->id, $sectioncount);
         echo $OUTPUT->render($chart);
+        echo $OUTPUT->render_from_template('scormreport_heatmap/precision_slider', array('scormid' => required_param('id', PARAM_INT)));
         $contextmodule = context_module::instance($cm->id);
-
     }
 }
